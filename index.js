@@ -4,8 +4,9 @@ import cors from "cors";
 const app = express();
 import { Queue } from "bullmq";
 
-const queue = new Queue("pdf-queue");
 app.use(cors());
+
+const queue = new Queue("pdf-queue");
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -13,7 +14,7 @@ const storage = multer.diskStorage({
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, "-" + uniqueSuffix + file.originalname);
+    cb(null, `${uniqueSuffix}-${file.originalname}`);
   },
 });
 
@@ -21,13 +22,15 @@ const upload = multer({ storage: storage });
 
 app.post("/upload/pdf", upload.single("pdf"), async (req, res) => {
   await queue.add(
-    "pdf",
+    "file-ready",
     JSON.stringify({
       filename: req.file.originalname,
-      destination: req.file.path,
+      destination: req.file.destination,
+      path: req.file.path,
     })
   );
-  return res.json({ msg: "file uploaded" });
+  console.log("file uplaoded");
+  return res.json({ message: "uploaded" });
 });
 
 app.get("/", (req, res) => {
