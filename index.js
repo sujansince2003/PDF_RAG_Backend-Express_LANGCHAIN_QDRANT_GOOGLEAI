@@ -1,16 +1,23 @@
 import express from "express";
 import multer from "multer";
 import cors from "cors";
-import { Mistral } from "@mistralai/mistralai";
-
-import { Queue } from "bullmq";
-import { MistralAIEmbeddings } from "@langchain/mistralai";
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { QdrantVectorStore } from "@langchain/qdrant";
+import { Queue } from "bullmq";
+import dotenv from "dotenv";
+dotenv.config();
 
-const client = new Mistral({ apiKey: "HS1StuaBt3APyl2O1MchRqUd5t7nIs3P" });
+// Initialize the Gemini chat client with a specific model version
+const chatModel = new ChatGoogleGenerativeAI({
+  model: "gemini-1.5-flash", // <--- CHANGE THIS LINE
+  // OR: model: "gemini-1.5-pro",
+  apiKey: process.env.GOOGLE_API_KEY,
+});
 
 const app = express();
 app.use(cors());
+app.use(express.json());
 
 const queue = new Queue("pdf-queue");
 
@@ -28,45 +35,58 @@ const upload = multer({ storage: storage });
 
 app.get("/chat", async (req, res) => {
   const userQuery = req.query.message;
-  const embeddings = new MistralAIEmbeddings({
-    model: "mistral-embed",
-    apiKey: "HS1StuaBt3APyl2O1MchRqUd5t7nIs3P",
+  if (!userQuery) {
+    return res.status(400).json({ message: "Query message is required." });
+  }
+
+  const embeddings = new GoogleGenerativeAIEmbeddings({
+    model: "embedding-001",
+    apiKey: process.env.GOOGLE_API_KEY,
   });
 
-  const vectorStore = await QdrantVectorStore.fromExistingCollection(
-    embeddings,
-    {
-      url: "http://localhost:6333",
-      collectionName: "pdf_documents",
-    }
-  );
+  try {
+    const vectorStore = await QdrantVectorStore.fromExistingCollection(
+      embeddings,
+      {
+        url: "http://localhost:6333",
+        collectionName: "pdf_documents",
+      }
+    );
 
-  const ret = vectorStore.asRetriever({
-    k: 2,
-  });
-  const result = await ret.invoke(userQuery);
+    const retriever = vectorStore.asRetriever({
+      k: 2,
+    });
+    const result = await retriever.invoke(userQuery);
 
-  const SYSTEM_PROMPT = `
-  You are helfull AI Assistant who answeres the user query based on the available context from PDF File.
-  Context:
-  ${JSON.stringify(result)}
-  `;
+    const SYSTEM_PROMPT = `
+You are a helpful AI Assistant.
+Answer the user's query using the provided "Context from PDF File" first.
+If the answer is *not* found in the provided context, then use your general knowledge to answer.
+When you answer based on your general knowledge (not from the PDF), explicitly state "Note: This information is from my general knowledge and not found in the provided PDF." at the end of your answer.
 
-  const chatResult = await client.chat.complete({
-    model: "mistral-large-latest",
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: userQuery },
-    ],
-  });
+Context from PDF File:
+${result.map((doc) => doc.pageContent).join("\n\n")}
+`;
 
-  return res.json({
-    answer: chatResult.choices[0].message.content,
-    docs: result,
-  });
+    const chatResult = await chatModel.invoke([
+      ["system", SYSTEM_PROMPT],
+      ["user", userQuery],
+    ]);
+
+    return res.json({
+      answer: chatResult.content,
+      docs: result,
+    });
+  } catch (error) {
+    console.error("Chat processing failed:", error);
+    return res.status(500).json({ message: "Error processing chat query." });
+  }
 });
 
 app.post("/upload/pdf", upload.single("pdf"), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: "No PDF file uploaded." });
+  }
   await queue.add(
     "file-ready",
     JSON.stringify({
@@ -75,7 +95,7 @@ app.post("/upload/pdf", upload.single("pdf"), async (req, res) => {
       path: req.file.path,
     })
   );
-  console.log("file uplaoded");
+  console.log("file uploaded");
   return res.json({ message: "uploaded" });
 });
 
