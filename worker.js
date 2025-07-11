@@ -1,9 +1,12 @@
 import { Worker } from "bullmq";
-import { MistralAIEmbeddings } from "@langchain/mistralai";
+// Import GoogleGenerativeAIEmbeddings instead of MistralAIEmbeddings
+import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { QdrantVectorStore } from "@langchain/qdrant";
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
-
+import dotenv from "dotenv";
+dotenv.config();
 console.log("worker started");
+console.log(process.env.GOOGLE_API_KEY);
 
 const worker = new Worker(
   "pdf-queue",
@@ -15,15 +18,21 @@ const worker = new Worker(
     console.log("Preparing to embed", docs.length, "documents");
 
     try {
-      const embeddings = new MistralAIEmbeddings({
-        model: "mistral-embed",
-        apiKey: "HS1StuaBt3APyl2O1MchRqUd5t7nIs3P",
+      // Initialize Gemini Embeddings
+      const embeddings = new GoogleGenerativeAIEmbeddings({
+        // You can choose a different embedding model if available,
+        // for example: "embedding-001" or "text-embedding-004"
+        model: "embedding-001",
+        apiKey: process.env.GOOGLE_API_KEY, // Use environment variable for API key
       });
 
-      console.log("Embedding model loaded");
+      console.log("Embedding model loaded (Gemini)");
 
+      // LangChain's embedDocuments method is designed to handle an array of Document objects directly
+      // It's generally better to pass the full Document objects if the vector store can use them
+      // If embedDocuments expects string content, then map to pageContent as you did before
       const vectors = await embeddings.embedDocuments(
-        docs.map((doc) => doc.pageContent)
+        docs.map((doc) => doc.pageContent) // Keep this if embedDocuments expects strings
       );
       console.log(
         "✅ Embedding successful:",
@@ -40,7 +49,10 @@ const worker = new Worker(
         }
       );
 
-      await vectorStore.addDocuments(docs);
+      // The fromDocuments call already adds the documents.
+      // Calling addDocuments again here would duplicate them.
+      // So, you can remove this line:
+      // await vectorStore.addDocuments(docs);
       console.log("Vector store saved");
     } catch (error) {
       console.error(" Processing failed:", error.message || error);
