@@ -76,6 +76,9 @@ const upload = multer({
 app.get("/", (req, res) => {
   res.json({ msg: "hello this is sujan" });
 });
+app.get("/hello", (req, res) => {
+  res.json({ message: "Hello from API!" });
+});
 
 app.post("/chat", async (req, res) => {
   const { userQuery, documentId, userId } = req.body;
