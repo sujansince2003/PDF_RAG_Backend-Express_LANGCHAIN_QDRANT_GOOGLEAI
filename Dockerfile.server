@@ -1,0 +1,12 @@
+# Dockerfile.server
+FROM node:20-alpine
+
+WORKDIR /app
+COPY . .
+
+RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN pnpm install --frozen-lockfile
+RUN npx prisma generate
+
+EXPOSE 8000
+CMD ["pnpm", "run", "dev"]
