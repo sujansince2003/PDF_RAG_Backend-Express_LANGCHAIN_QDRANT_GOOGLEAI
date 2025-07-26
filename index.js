@@ -18,6 +18,7 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const PORT = process.env.PORT || 8000;
 const prisma = new PrismaClient();
 
 const chatModel = new ChatGoogleGenerativeAI({
@@ -255,6 +256,6 @@ app.post("/delete-file", async (req, res) => {
   }
 });
 
-app.listen(8000, () => {
-  console.log("Backend Server is running on port 8000");
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
